@@ -1,0 +1,21 @@
+{
+  "name": "secure-smart-api",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "roberto alvarez",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "cors": "^2.8.5",
+    "epilogue": "^0.7.1",
+    "express": "^4.16.4",
+    "jsonwebtoken": "^8.4.0",
+    "morgan": "^1.9.1",
+    "sequelize": "^4.41.2",
+    "sqlite3": "^4.0.4"
+  }
+}
