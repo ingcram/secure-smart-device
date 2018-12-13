@@ -1,3 +1,4 @@
+const util = require("util");
 const express = require("express");
 const initializeDatabase = require("./database");
 const bodyParser = require("body-parser");
@@ -9,7 +10,7 @@ const ProtectedRoutes = express.Router();
 //const expressWs = require("express-ws");
 const app = express();
 const server = require("http").createServer(app);
-require("express-ws")(app, server);
+var ews = require("express-ws")(app, server);
 //const http = require("http");
 const { Client } = require("tplink-smarthome-api");
 
@@ -103,59 +104,79 @@ ProtectedRoutes.get("/getAllDevices", (req, res) => {
   res.json(devices);
 });
 
-const client = new Client();
-let smartDevice = { host: "192.168.15.1" };
-
-app.ws("/isOn", function(ws, req) {
-  ws.on("message", function(msg) {
-    //conectamos el device utilizamos el host
-    client.getDevice(smartDevice).then(device => {
-      device
-        .getPowerState()
-        .then(result => {
-          console.log(result);
-          ws.send(JSON.stringify(result));
-        })
-        .catch(error => {
-          //console.log(error);
-          ws.send("JSON.stringify(error)");
-        });
-    });
-  });
-});
-
-app.ws("/turnOn", function(ws, req) {
-  ws.on("message", function(msg) {
-    //conectamos el device utilizamos el host
-    client.getDevice(smartDevice).then(device => {
+app.post("/turnOn", (req, res) => {
+  console.log(req.body[0].ip);
+  client
+    .getDevice({ host: req.body[0].ip })
+    .then(device => {
       device
         .setPowerState(true)
         .then(result => {
           console.log(result);
-          ws.send(JSON.stringify(result));
+          res.json(JSON.stringify({ status: result }));
         })
         .catch(error => {
           console.log(error);
-          ws.send(error);
+          res.json(error);
         });
+    })
+    .catch(error => {
+      console.log(error);
+      res.json(JSON.stringify(error));
     });
-  });
 });
 
-app.ws("/turnOff", function(ws, req) {
-  ws.on("message", function(msg) {
-    //conectamos el device utilizamos el host
-    client.getDevice(smartDevice).then(device => {
+app.post("/turnOff", (req, res) => {
+  client
+    .getDevice({ host: req.body[0].ip })
+    .then(device => {
       device
         .setPowerState(false)
         .then(result => {
           console.log(result);
-          ws.send(JSON.stringify(result));
+          res.json(JSON.stringify({ status: result }));
         })
         .catch(error => {
           console.log(error);
-          ws.send(error);
+          res.json(error);
         });
+    })
+    .catch(error => {
+      console.log(error);
+      res.json(JSON.stringify(error));
     });
+});
+
+const client = new Client();
+var aWss = ews.getWss("isOn");
+
+app.ws("/isOn", function(ws, req) {
+  ws.on("message", function(msg) {
+    //conectamos el device utilizamos el host
+    ws.send("connected");
   });
 });
+
+var statusEvent = function(eventName, deviceInformation, state) {
+  let device = {
+    alias: deviceInformation._sysInfo.alias,
+    deviceId: deviceInformation._sysInfo.deviceId,
+    status: state
+  };
+  console.log(device);
+  aWss.clients.forEach(function(client) {
+    client.send(JSON.stringify(device));
+  });
+};
+
+client.on("device-new", device => {
+  device.startPolling(5000);
+  console.log(device._sysInfo.alias);
+  // Plug Events
+  device.on("power-update", powerOn => {
+    statusEvent("power-update", device, powerOn);
+  });
+});
+
+console.log("Starting Device Discovery");
+client.startDiscovery();
