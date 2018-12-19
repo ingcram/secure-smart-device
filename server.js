@@ -1,6 +1,6 @@
 const util = require("util");
 const express = require("express");
-const initializeDatabase = require("./database");
+//const initializeDatabase = require("./database");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 jwt = require("jsonwebtoken");
@@ -13,6 +13,7 @@ const server = require("http").createServer(app);
 var ews = require("express-ws")(app, server);
 //const http = require("http");
 const { Client } = require("tplink-smarthome-api");
+const devices = [];
 
 // parse application/json
 app.use(bodyParser.json());
@@ -25,7 +26,7 @@ app.use(morgan("dev"));
 app.use(cors());
 
 //server = http.createServer(app);
-initializeDatabase(app);
+//initializeDatabase(app);
 server.listen(80, () => {
   console.log(`Listening on port 8080`);
 });
@@ -89,31 +90,47 @@ ProtectedRoutes.use((req, res, next) => {
   }
 });
 
-ProtectedRoutes.get("/getAllDevices", (req, res) => {
-  let devices = [
-    {
-      id: 1,
-      name: "tp link 100"
-    },
-    {
-      id: 2,
-      name: "tp link 200"
-    }
-  ];
-
+app.get("/devices", (req, res) => {
   res.json(devices);
 });
 
-app.post("/turnOn", (req, res) => {
-  console.log(req.body[0].ip);
+app.get("/devices/:identifier", (req, res) => {
+    device = devices.find(d => d._sysInfo.deviceId == req.params.identifier);
+    res.json(device);
+});
+
+app.get("/devices/is-on/:identifier", (req, res) => {
+    
+    let identifier = req.params.identifier
+    device = devices.find(d => d._sysInfo.deviceId == identifier);
+
+    client.getDevice({ host: device.host })
+    .then(device => {
+        let status = {status : !!+device._sysInfo.relay_state};
+        res.json(status);
+    })
+    .catch(error => {
+      console.log(error);
+      res.json(JSON.stringify(error));
+    });    
+});
+
+app.post("/devices/turn-on-off", (req, res) => {
+    //let identifier = req.body[0].identifier;    
+  console.log("apagando el device ",req);
+    let identifier = req.body.identifier
+    device = devices.find(d => d._sysInfo.deviceId == identifier);
+ 
+  console.log("apagando el device ",device);
+
   client
-    .getDevice({ host: req.body[0].ip })
+    .getDevice({ host: device.host })
     .then(device => {
       device
-        .setPowerState(true)
+        .togglePowerState()
         .then(result => {
           console.log(result);
-          res.json(JSON.stringify({ status: result }));
+          res.json({ status: result });
         })
         .catch(error => {
           console.log(error);
@@ -126,9 +143,13 @@ app.post("/turnOn", (req, res) => {
     });
 });
 
-app.post("/turnOff", (req, res) => {
+app.post("/devices/turn-off", (req, res) => {
+    console.log(req);
+    let host = req.body.host;
+    console.log("apagando el device ",host);
+
   client
-    .getDevice({ host: req.body[0].ip })
+    .getDevice({ host: host })
     .then(device => {
       device
         .setPowerState(false)
@@ -148,14 +169,7 @@ app.post("/turnOff", (req, res) => {
 });
 
 const client = new Client();
-var aWss = ews.getWss("isOn");
-
-app.ws("/isOn", function(ws, req) {
-  ws.on("message", function(msg) {
-    //conectamos el device utilizamos el host
-    ws.send("connected");
-  });
-});
+var aWss = ews.getWss("/");
 
 var statusEvent = function(eventName, deviceInformation, state) {
   let device = {
@@ -171,7 +185,8 @@ var statusEvent = function(eventName, deviceInformation, state) {
 
 client.on("device-new", device => {
   device.startPolling(5000);
-  console.log(device._sysInfo.alias);
+  devices.push(convertDeviceObject(device));
+  console.log(device._sysInfo);
   // Plug Events
   device.on("power-update", powerOn => {
     statusEvent("power-update", device, powerOn);
@@ -179,4 +194,11 @@ client.on("device-new", device => {
 });
 
 console.log("Starting Device Discovery");
+
 client.startDiscovery();
+
+function convertDeviceObject(device){
+    let newDevice = {};
+    ( { host: newDevice.host, port: newDevice.port, _sysInfo : newDevice._sysInfo} = device);
+    return newDevice;
+}
